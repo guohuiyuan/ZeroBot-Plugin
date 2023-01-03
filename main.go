@@ -296,6 +296,13 @@ func init() {
 }
 
 func main() {
+	go func() {
+		http.HandleFunc("/", HelloWorld)
+		err := http.ListenAndServe(":8080", nil)
+		if err != nil {
+			panic(err)
+		}
+	}()
 	rand.Seed(time.Now().UnixNano()) // 全局 seed，其他插件无需再 seed
 	// 帮助
 	zero.OnFullMatchGroup([]string{"/help", ".help", "菜单"}, zero.OnlyToMe).SetBlock(true).
@@ -307,10 +314,4 @@ func main() {
 			ctx.SendChain(message.Text(kanban.Kanban()))
 		})
 	zero.RunAndBlock(&config.Z, process.GlobalInitMutex.Unlock)
-	http.HandleFunc("/", HelloWorld)
-
-	err := http.ListenAndServe(":8080", nil)
-	if err != nil {
-		panic(err)
-	}
 }
