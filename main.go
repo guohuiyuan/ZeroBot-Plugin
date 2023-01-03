@@ -6,6 +6,8 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"strconv"
 	"time"
@@ -187,6 +189,10 @@ import (
 	// -----------------------以上为内置依赖，勿动------------------------ //
 )
 
+func HelloWorld(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintln(w, "hello world")
+}
+
 type zbpcfg struct {
 	Z zero.Config        `json:"zero"`
 	W []*driver.WSClient `json:"ws"`
@@ -301,4 +307,10 @@ func main() {
 			ctx.SendChain(message.Text(kanban.Kanban()))
 		})
 	zero.RunAndBlock(&config.Z, process.GlobalInitMutex.Unlock)
+	http.HandleFunc("/", HelloWorld)
+
+	err := http.ListenAndServe(":8080", nil)
+	if err != nil {
+		panic(err)
+	}
 }
