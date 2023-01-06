@@ -6,6 +6,8 @@ import (
 	"flag"
 	"fmt"
 	"math/rand"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"strconv"
 	"time"
@@ -187,6 +189,10 @@ import (
 	// -----------------------以上为内置依赖，勿动------------------------ //
 )
 
+func HelloWorld(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintln(w, "hello world")
+}
+
 type zbpcfg struct {
 	Z zero.Config        `json:"zero"`
 	W []*driver.WSClient `json:"ws"`
@@ -290,6 +296,13 @@ func init() {
 }
 
 func main() {
+	go func() {
+		http.HandleFunc("/", HelloWorld)
+		err := http.ListenAndServe(":8080", nil)
+		if err != nil {
+			panic(err)
+		}
+	}()
 	rand.Seed(time.Now().UnixNano()) // 全局 seed，其他插件无需再 seed
 	// 帮助
 	zero.OnFullMatchGroup([]string{"/help", ".help", "菜单"}, zero.OnlyToMe).SetBlock(true).
