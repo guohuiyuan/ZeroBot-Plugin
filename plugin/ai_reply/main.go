@@ -17,7 +17,7 @@ import (
 	"github.com/wdvxdr1123/ZeroBot/message"
 )
 
-var replmd = replymode([]string{"婧枫", "沫沫", "青云客", "小爱", "ChatGPT"})
+var replmd = replymode([]string{ "青云客", "小爱", "婧枫", "沫沫","ChatGPT"})
 
 var ttsmd = newttsmode()
 
@@ -29,7 +29,7 @@ func init() { // 插件主体
 			"- 设置语音模式[原神人物/百度/TTSCN/桑帛云] 数字(百度/TTSCN说话人/桑帛云)\n" +
 			"- 设置默认语音模式[原神人物/百度/TTSCN/桑帛云] 数字(百度/TTSCN说话人/桑帛云)\n" +
 			"- 恢复成默认语音模式\n" +
-			"- 设置语音回复模式[沫沫|婧枫|青云客|小爱|ChatGPT]\n" +
+			"- 设置语音回复模式[青云客|小爱|沫沫|婧枫|ChatGPT]\n" +
 			"- 设置原神语音 api key xxxxxx (key请加开发群获得)\n" +
 			"- 设置百度语音 api id xxxxxx secret xxxxxx (请自行获得)\n" +
 			"当前适用的原神人物含有以下: \n" + list(genshin.SoundList[:], 5) +
