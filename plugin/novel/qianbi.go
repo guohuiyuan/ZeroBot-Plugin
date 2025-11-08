@@ -15,6 +15,7 @@ import (
 	"github.com/sirupsen/logrus"
 	zero "github.com/wdvxdr1123/ZeroBot"
 	"github.com/wdvxdr1123/ZeroBot/message"
+	"golang.org/x/net/html"
 
 	ub "github.com/FloatTech/floatbox/binary"
 	"github.com/FloatTech/floatbox/file"
@@ -27,14 +28,14 @@ import (
 
 const (
 	websiteURL   = "https://www.23qb.com"
-	websiteTitle = "铅笔小说"
-	errorTitle   = "出现错误！"
+	websiteTitle = "%v 搜索结果_铅笔小说"
+	errorTitle   = "出现错误！_铅笔小说"
 	username     = "zerobot"
 	password     = "123456"
 	submit       = "%26%23160%3B%B5%C7%26%23160%3B%26%23160%3B%C2%BC%26%23160%3B"
 	ua           = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36"
-	loginURL     = websiteURL + "/login.php?do=submit&jumpurl=https%3A%2F%2Fwww.23qb.com%2F"
-	searchURL    = websiteURL + "/saerch.php"
+	loginURL     = websiteURL + "/login.php?do=submit"
+	searchURL    = websiteURL + "/search.html?searchkey=%v"
 	downloadURL  = websiteURL + "/modules/article/txtarticle.php?id=%v"
 	detailURL    = websiteURL + "/book/%v/"
 	idReg        = `/(\d+)/`
@@ -47,6 +48,21 @@ var (
 	apikeymu sync.Mutex
 )
 
+// novelInfo 小说信息结构体
+type novelInfo struct {
+	Title         string
+	Category      string
+	Author        string
+	Status        string
+	Description   string
+	UpdateTime    string
+	LatestChapter string
+	WebpageURL    string
+	DownloadURL   string
+	CoverURL      string
+	Tags          string
+}
+
 func init() {
 	engine := control.AutoRegister(&ctrl.Options[*zero.Ctx]{
 		DisableOnDefault: false,
@@ -54,7 +70,7 @@ func init() {
 		Brief:            "铅笔小说网搜索",
 		Help: "- 小说[xxx]\n" +
 			"- 设置小说配置 zerobot 123456\n" +
-			"- 下载小说30298\n" +
+			"- 下载小说4506\n" +
 			"建议去https://www.23qb.com/ 注册一个账号, 小说下载有积分限制",
 		PrivateDataFolder: "novel",
 	})
@@ -63,21 +79,8 @@ func init() {
 	engine.OnRegex("^小说([\u4E00-\u9FA5A-Za-z0-9]{1,25})$").SetBlock(true).Limit(ctxext.LimitByUser).
 		Handle(func(ctx *zero.Ctx) {
 			ctx.SendChain(message.Text("少女祈祷中......"))
-			key := getAPIKey(ctx)
-			u, p, _ := strings.Cut(key, ",")
-			if u == "" {
-				u = username
-			}
-			if p == "" {
-				p = password
-			}
-			cookie, err := login(u, p)
-			if err != nil {
-				ctx.SendChain(message.Text("ERROR: ", err))
-				return
-			}
 			searchKey := ctx.State["regex_matched"].([]string)[1]
-			searchHTML, err := search(searchKey, cookie)
+			searchHTML, err := search(searchKey)
 			if err != nil {
 				ctx.SendChain(message.Text("ERROR: ", err))
 				return
@@ -89,30 +92,20 @@ func init() {
 			}
 			htmlTitle := htmlquery.InnerText(htmlquery.FindOne(doc, "/html/head/title"))
 			switch htmlTitle {
-			case websiteTitle:
-				list, err := htmlquery.QueryAll(doc, "//dl[@id='nr']")
-				if err != nil {
-					ctx.SendChain(message.Text("ERROR: ", err))
-					return
-				}
-				if len(list) != 0 {
-					txt := ""
-					for _, v := range list {
-						bookName := htmlquery.InnerText(htmlquery.FindOne(v, "/dd[1]/h3/a[1]"))
-						category := htmlquery.InnerText(htmlquery.FindOne(v, "/dt/span[1]"))
-						author := htmlquery.InnerText(htmlquery.FindOne(v, "/dd[2]/span[1]"))
-						status := htmlquery.InnerText(htmlquery.FindOne(v, "/dd[2]/span[2]"))
-						wordNumbers := htmlquery.InnerText(htmlquery.FindOne(v, "/dd[2]/span[3]"))
-						description := htmlquery.InnerText(htmlquery.FindOne(v, "/dd[3]"))
-						updateTime := htmlquery.InnerText(htmlquery.FindOne(v, "/dd[1]/h3/span[1]"))
-						latestChapter := htmlquery.InnerText(htmlquery.FindOne(v, "/dd[4]/a[1]"))
-
-						reg := regexp.MustCompile(idReg)
-						id := reg.FindStringSubmatch(htmlquery.SelectAttr(htmlquery.FindOne(v, "/dt/a[1]"), "href"))[1]
-
-						webpageURL := websiteURL + "/book/" + id + "/"
-						downloadURL := websiteURL + "/modules/article/txtarticle.php?id=" + id
-						txt += fmt.Sprintf("书名:%s\n类型:%s\n作者:%s\n状态:%s\n字数:%s\n简介:%s\n更新时间:%s\n最新章节:%s\n网页链接:%s\n下载地址:%s\n\n", bookName, category, author, status, wordNumbers, description, updateTime, latestChapter, webpageURL, downloadURL)
+			case fmt.Sprintf(websiteTitle, searchKey):
+				// 搜索页面 - 解析搜索结果
+				novels := parseSearchResults(doc)
+				if len(novels) > 0 {
+					// 生成搜索结果图片
+					txt := fmt.Sprintf("搜索关键词: %s\n共找到 %d 本小说\n\n", searchKey, len(novels))
+					for i, novel := range novels {
+						txt += fmt.Sprintf("【第%d本】\n", i+1)
+						txt += fmt.Sprintf("书名: %s\n", novel.Title)
+						txt += fmt.Sprintf("类型: %s\n", novel.Category)
+						txt += fmt.Sprintf("标签: %s\n", novel.Tags)
+						txt += fmt.Sprintf("简介: %s\n", novel.Description)
+						txt += fmt.Sprintf("网页链接: %s\n", novel.WebpageURL)
+						txt += fmt.Sprintf("下载地址: %s\n\n", novel.DownloadURL)
 					}
 					data, err := text.RenderToBase64(txt, text.FontFile, 400, 20)
 					if err != nil {
@@ -134,19 +127,13 @@ func init() {
 				text = strings.ReplaceAll(text, " ", "")
 				ctx.SendChain(message.Text(text))
 			default:
-				bookName := htmlquery.SelectAttr(htmlquery.FindOne(doc, "//meta[@property='og:novel:book_name']"), "content")
-				category := htmlquery.SelectAttr(htmlquery.FindOne(doc, "//meta[@property='og:novel:category']"), "content")
-				author := htmlquery.SelectAttr(htmlquery.FindOne(doc, "//meta[@property='og:novel:author']"), "content")
-				status := htmlquery.SelectAttr(htmlquery.FindOne(doc, "//meta[@property='og:novel:status']"), "content")
-				description := htmlquery.InnerText(htmlquery.FindOne(doc, "//div[@id='bookintro']/p"))
-				updateTime := htmlquery.SelectAttr(htmlquery.FindOne(doc, "//meta[@property='og:novel:update_time']"), "content")
-				latestChapter := htmlquery.SelectAttr(htmlquery.FindOne(doc, "//meta[@property='og:novel:latest_chapter_name']"), "content")
-
-				reg := regexp.MustCompile(idReg)
-				id := reg.FindStringSubmatch(htmlquery.SelectAttr(htmlquery.FindOne(doc, "//meta[@property='og:novel:read_url']"), "content"))[1]
-				webpageURL := websiteURL + "/book/" + id + "/"
-				downloadURL := websiteURL + "/modules/article/txtarticle.php?id=" + id
-				text := fmt.Sprintf("书名:%s\n类型:%s\n作者:%s\n状态:%s\n简介:%s\n更新时间:%s\n最新章节:%s\n网页链接:%s\n下载地址:%s\n", bookName, category, author, status, description, updateTime, latestChapter, webpageURL, downloadURL)
+				// 详情页面 - 解析小说详情
+				novel := parseNovelDetail(doc)
+				text := fmt.Sprintf("书名: %s\n类型: %s\n作者: %s\n状态: %s\n简介: %s\n更新时间: %s\n最新章节: %s\n网页链接: %s\n下载地址: %s\n",
+					novel.Title, novel.Category, novel.Author, novel.Status,
+					novel.Description, novel.UpdateTime, novel.LatestChapter,
+					novel.WebpageURL, novel.DownloadURL)
+				text = strings.ReplaceAll(text, "<br />", "")
 				ctx.SendChain(message.Text(text))
 			}
 		})
@@ -178,7 +165,7 @@ func init() {
 				ctx.SendChain(message.Text("ERROR: ", err))
 				return
 			}
-			detailHTML, err := detail(id, cookie)
+			detailHTML, err := detail(id)
 			if err != nil {
 				ctx.SendChain(message.Text("ERROR: ", err))
 				return
@@ -188,7 +175,12 @@ func init() {
 				ctx.SendChain(message.Text("ERROR: ", err))
 				return
 			}
-			title := htmlquery.InnerText(htmlquery.FindOne(doc, "//*[@id='bookinfo']/div[@class='bookright']/div[@class='d_title']/h1"))
+			htmlTitle := htmlquery.InnerText(htmlquery.FindOne(doc, "/html/head/title"))
+			if htmlTitle == errorTitle {
+				ctx.SendChain(message.Text("该小说不存在"))
+				return
+			}
+			title := strings.ReplaceAll(htmlTitle, "免费在线阅读_铅笔小说", "")
 			fileName := filepath.Join(cachePath, title+".txt")
 			if file.IsExist(fileName) {
 				ctx.UploadThisGroupFile(filepath.Join(file.BOTPATH, fileName), filepath.Base(fileName), "")
@@ -208,19 +200,99 @@ func init() {
 		})
 }
 
+// parseSearchResults 解析搜索结果
+func parseSearchResults(doc *html.Node) []novelInfo {
+	var novels []novelInfo
+
+	// 查找搜索结果项
+	items := htmlquery.Find(doc, "//div[@class='module-search-item']")
+	for _, item := range items {
+		novel := novelInfo{}
+
+		// 解析标题
+		titleNode := htmlquery.FindOne(item, ".//h3/a")
+		if titleNode != nil {
+			novel.Title = htmlquery.InnerText(titleNode)
+			// 获取小说ID
+			href := htmlquery.SelectAttr(titleNode, "href")
+			reg := regexp.MustCompile(idReg)
+			if matches := reg.FindStringSubmatch(href); len(matches) > 1 {
+				id := matches[1]
+				novel.WebpageURL = websiteURL + "/book/" + id + "/"
+				novel.DownloadURL = websiteURL + "/modules/article/txtarticle.php?id=" + id
+			}
+		}
+
+		// 解析分类
+		categoryNode := htmlquery.FindOne(item, ".//a[@class='novel-serial']")
+		if categoryNode != nil {
+			novel.Category = htmlquery.InnerText(categoryNode)
+		}
+
+		// 解析标签
+		tagNode := htmlquery.FindOne(item, ".//div[@class='tag-link']/span")
+		if tagNode != nil {
+			novel.Tags = htmlquery.InnerText(tagNode)
+		}
+
+		// 解析简介
+		descNode := htmlquery.FindOne(item, ".//div[@class='novel-info-item']")
+		if descNode != nil {
+			novel.Description = strings.TrimSpace(htmlquery.InnerText(descNode))
+			// 限制简介长度
+			if len(novel.Description) > 100 {
+				novel.Description = novel.Description[:100] + "..."
+			}
+		}
+
+		// 解析封面图片
+		coverNode := htmlquery.FindOne(item, ".//img[@class='lazy lazyload']")
+		if coverNode != nil {
+			novel.CoverURL = htmlquery.SelectAttr(coverNode, "data-src")
+		}
+
+		if novel.Title != "" {
+			novels = append(novels, novel)
+		}
+	}
+
+	return novels
+}
+
+// parseNovelDetail 解析小说详情页面
+func parseNovelDetail(doc *html.Node) novelInfo {
+	novel := novelInfo{}
+
+	// 解析基本信息
+	bookName := htmlquery.SelectAttr(htmlquery.FindOne(doc, "//meta[@property='og:novel:book_name']"), "content")
+	category := htmlquery.SelectAttr(htmlquery.FindOne(doc, "//meta[@property='og:novel:category']"), "content")
+	author := htmlquery.SelectAttr(htmlquery.FindOne(doc, "//meta[@property='og:novel:author']"), "content")
+	status := htmlquery.SelectAttr(htmlquery.FindOne(doc, "//meta[@property='og:novel:status']"), "content")
+	description := htmlquery.SelectAttr(htmlquery.FindOne(doc, "//meta[@property='og:description']"), "content")
+	updateTime := htmlquery.SelectAttr(htmlquery.FindOne(doc, "//meta[@property='og:novel:update_time']"), "content")
+	latestChapter := htmlquery.SelectAttr(htmlquery.FindOne(doc, "//meta[@property='og:novel:latest_chapter_name']"), "content")
+
+	reg := regexp.MustCompile(idReg)
+	id := reg.FindStringSubmatch(htmlquery.SelectAttr(htmlquery.FindOne(doc, "//meta[@property='og:novel:read_url']"), "content"))[1]
+	webpageURL := websiteURL + "/book/" + id + "/"
+	downloadURL := websiteURL + "/modules/article/txtarticle.php?id=" + id
+
+	novel.Title = bookName
+	novel.Category = category
+	novel.Author = author
+	novel.Status = status
+	novel.Description = description
+	novel.UpdateTime = updateTime
+	novel.LatestChapter = latestChapter
+	novel.WebpageURL = webpageURL
+	novel.DownloadURL = downloadURL
+
+	return novel
+}
+
 func login(username, password string) (cookie string, err error) {
 	client := &http.Client{}
-	usernameData, err := ub.UTF82GBK(ub.StringToBytes(username))
-	if err != nil {
-		return
-	}
-	usernameGbk := ub.BytesToString(usernameData)
-	passwordData, err := ub.UTF82GBK(ub.StringToBytes(password))
-	if err != nil {
-		return
-	}
-	passwordGbk := ub.BytesToString(passwordData)
-	loginReq, err := http.NewRequest("POST", loginURL, strings.NewReader(fmt.Sprintf("username=%s&password=%s&usecookie=315360000&action=login&submit=%s", url.QueryEscape(usernameGbk), url.QueryEscape(passwordGbk), submit)))
+	loginReq, err := http.NewRequest("POST", loginURL, strings.NewReader(fmt.Sprintf("username=%s&password=%s&usecookie=86400&action=login&submit=%s", url.QueryEscape(username), url.QueryEscape(password), submit)))
 	if err != nil {
 		return
 	}
@@ -237,51 +309,27 @@ func login(username, password string) (cookie string, err error) {
 	return
 }
 
-func search(searchKey string, cookie string) (searchHTML string, err error) {
-	searchKeyData, err := ub.UTF82GBK(ub.StringToBytes(searchKey))
+func search(searchKey string) (searchHTML string, err error) {
+	data, err := web.GetData(fmt.Sprintf(searchURL, url.QueryEscape(searchKey)))
 	if err != nil {
 		return
 	}
-	searchKeyGbk := ub.BytesToString(searchKeyData)
-	data, err := web.RequestDataWithHeaders(web.NewDefaultClient(), searchURL, "POST", func(r *http.Request) error {
-		r.Header.Set("Cookie", cookie)
-		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		r.Header.Set("User-Agent", ua)
-		return nil
-	}, strings.NewReader(fmt.Sprintf("searchkey=%s&searchtype=all", url.QueryEscape(searchKeyGbk))))
-	if err != nil {
-		return
-	}
-	searchData, err := ub.GBK2UTF8(data)
-	if err != nil {
-		return
-	}
-	searchHTML = ub.BytesToString(searchData)
+	searchHTML = ub.BytesToString(data)
 	return
 }
 
-func detail(id string, cookie string) (detailHTML string, err error) {
-	data, err := web.RequestDataWithHeaders(web.NewDefaultClient(), fmt.Sprintf(detailURL, id), "GET", func(r *http.Request) error {
-		r.Header.Set("Cookie", cookie)
-		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		r.Header.Set("User-Agent", ua)
-		return nil
-	}, nil)
+func detail(id string) (detailHTML string, err error) {
+	data, err := web.GetData(fmt.Sprintf(detailURL, id))
 	if err != nil {
 		return
 	}
-	detailData, err := ub.GBK2UTF8(data)
-	if err != nil {
-		return
-	}
-	detailHTML = ub.BytesToString(detailData)
+	detailHTML = ub.BytesToString(data)
 	return
 }
 
 func download(id string, cookie string) (downloadHTML string, err error) {
 	data, err := web.RequestDataWithHeaders(web.NewDefaultClient(), fmt.Sprintf(downloadURL, id), "GET", func(r *http.Request) error {
 		r.Header.Set("Cookie", cookie)
-		r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		r.Header.Set("User-Agent", ua)
 		return nil
 	}, nil)
