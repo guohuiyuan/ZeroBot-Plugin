@@ -1,0 +1,9 @@
+services:
+  zerobot-plugin:
+    image: guohuiyuan/zerobot-plugin:latest
+    container_name: zerobot-plugin
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+    environment:
+      TZ: Asia/Shanghai

@@ -1,0 +1,46 @@
+# Based on .gitignore
+*.exe
+*.jpg
+
+
+# Version control
+.gitignore
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.tmp
+*.bak
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Build artifacts
+*.syso
+
+# Test files
+*_test.go
+
+# Temporary files
+*.tmp
+*.swp
+
+# Docker metadata not needed in the build context
+.dockerignore
+.goreleaser.yml
+
+# GitHub workflows
+.github/
+
+# Scripts and batch files
+run.bat
+run.sh
+
+# Local build output
+output/
+zerobot-plugin

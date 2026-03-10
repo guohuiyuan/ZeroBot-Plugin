@@ -6,25 +6,26 @@ import (
 	"io"
 	"os"
 	"path"
+	"strings"
 )
 
 func main() {
 	root := flag.String("r", "", "project root dir")
 	flag.Parse()
 
-	fi, err := os.Open(path.Join(*root, "main.go"))
+	srcMain, err := os.ReadFile(path.Join(*root, "main.go"))
 	if err != nil {
 		panic(err)
 	}
+	srcMain = []byte(stripGenerateDirectives(string(srcMain)))
 	fo, err := os.Create(path.Join(*root, "abineundo/ref/main/main.go"))
 	if err != nil {
 		panic(err)
 	}
-	_, err = io.Copy(fo, fi)
+	_, err = fo.Write(srcMain)
 	if err != nil {
 		panic(err)
 	}
-	fi.Close()
 	fo.Close()
 
 	regf := path.Join(*root, "custom/register.go")
@@ -37,7 +38,7 @@ func main() {
 		panic(err)
 	}
 
-	fi, err = os.Open(regf)
+	fi, err := os.Open(regf)
 	if err != nil {
 		panic(err)
 	}
@@ -51,4 +52,16 @@ func main() {
 	}
 	fi.Close()
 	fo.Close()
+}
+
+func stripGenerateDirectives(src string) string {
+	lines := strings.Split(src, "\n")
+	filtered := lines[:0]
+	for _, line := range lines {
+		if strings.HasPrefix(line, "//go:generate ") {
+			continue
+		}
+		filtered = append(filtered, line)
+	}
+	return strings.Join(filtered, "\n")
 }

@@ -10,3 +10,5 @@ ZeroBot-Plugin*
 *.syso
 /.direnv
 /result
+napcat/
+ntqq/
