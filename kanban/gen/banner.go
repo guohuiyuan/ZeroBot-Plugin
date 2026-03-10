@@ -30,22 +30,29 @@ var Banner = "* OneBot + ZeroBot + Golang\n" +
 const timeformat = `2006-01-02 15:04:05 +0800 CST`
 
 func main() {
-	f, err := os.Create("banner/banner.go")
-	if err != nil {
-		panic(err)
-	}
-	defer f.Close()
 	vartag := bytes.NewBuffer(nil)
 	vartagcmd := exec.Command("git", "tag", "--sort=committerdate")
 	vartagcmd.Stdout = vartag
-	err = vartagcmd.Run()
+	err := vartagcmd.Run()
 	if err != nil {
 		panic(err)
 	}
-	s := strings.Split(vartag.String(), "\n")
+	version := latestTag(vartag.String())
 	now := time.Now()
-	_, err = fmt.Fprintf(f, banner, s[len(s)-2], now.Year(), now.Format(timeformat))
+	content := fmt.Sprintf(banner, version, now.Year(), now.Format(timeformat))
+	err = os.WriteFile("banner/banner.go", []byte(content), 0o644)
 	if err != nil {
 		panic(err)
 	}
+}
+
+func latestTag(tags string) string {
+	lines := strings.Split(tags, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		tag := strings.TrimSpace(lines[i])
+		if tag != "" {
+			return tag
+		}
+	}
+	return "dev"
 }

@@ -1,0 +1,12 @@
+services:
+  zerobot-plugin:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: guohuiyuan/zerobot-plugin:dev
+    container_name: zerobot-plugin-dev
+    restart: unless-stopped
+    volumes:
+      - ./data:/app/data
+    environment:
+      TZ: Asia/Shanghai
